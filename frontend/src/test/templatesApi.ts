@@ -1,8 +1,10 @@
-// Test helper: stubs fetch with a fake backend /api/templates/{id} endpoint.
+// Test helper: stubs fetch with a fake backend (/api/templates/{id} and /api/chat).
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { vi } from "vitest";
+
+import type { ChatResult } from "@/lib/chat";
 
 const TEMPLATES_DIR = path.join(__dirname, "..", "..", "..", "templates");
 
@@ -17,10 +19,14 @@ export function readTemplate(filename: string): string {
 
 /**
  * Serves the real template files for known ids and 404 otherwise. `status` makes every
- * request fail with that HTTP status; `content` replaces every template's markdown.
+ * request fail with that HTTP status; `content` replaces every template's markdown;
+ * `chat` is returned by POST /api/chat.
  */
-export function stubTemplatesApi(options: { status?: number; content?: string } = {}) {
+export function stubTemplatesApi(
+  options: { status?: number; content?: string; chat?: ChatResult } = {},
+) {
   const fetchMock = vi.fn(async (url: string) => {
+    if (url === "/api/chat" && options.chat) return Response.json(options.chat);
     const id = url.replace("/api/templates/", "");
     const file = TEMPLATE_FILES[id];
     if (options.status) return new Response("", { status: options.status });

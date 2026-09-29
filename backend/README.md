@@ -9,6 +9,12 @@ FastAPI app (a [uv](https://docs.astral.sh/uv/) project) that serves the JSON AP
 - `GET /api/templates` — the template catalog (`../catalog.json`) as `{id, name, description}`.
 - `GET /api/templates/{id}` — one template, including its markdown `content`.
   Ids are the lower-cased file names, e.g. `mutual-nda`, `csa`, `ai-addendum`.
+- `POST /api/chat` — one turn of the AI chat that drafts a Mutual NDA. Takes
+  `{messages, fields}` (the whole conversation and the current field values) and returns
+  `{reply, fields}` with the values the AI extracted merged in. Uses `gpt-oss-120b` on
+  Cerebras via LiteLLM/OpenRouter with Structured Outputs (`src/prelegal_backend/chat.py`).
+  Needs `OPENROUTER_API_KEY` (read from the repo's `.env`); returns 503 without it and 502
+  if the model call fails.
 
 ## Database
 
@@ -22,6 +28,7 @@ cd backend
 uv sync
 uv run prelegal-backend   # http://localhost:8000
 uv run pytest
+RUN_LLM_TESTS=1 uv run pytest -k live   # also call the real model
 ```
 
 The frontend is served only if it has been built (`cd ../frontend && npm run build`).

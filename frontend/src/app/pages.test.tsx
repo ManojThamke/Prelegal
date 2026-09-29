@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import NdaPage from "@/app/nda/page";
 import SignInPage from "@/app/page";
+import { defaultNdaData } from "@/lib/nda";
 import { signIn } from "@/lib/session";
 import { stubTemplatesApi } from "@/test/templatesApi";
 
@@ -51,6 +52,23 @@ describe("NDA page", () => {
     expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Standard Terms" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Download PDF" })).toBeDisabled();
+  });
+
+  it("fills in the agreement from the AI chat", async () => {
+    stubTemplatesApi({
+      chat: {
+        reply: "Which state's law should govern?",
+        fields: { ...defaultNdaData, purpose: "Exploring a joint venture" },
+      },
+    });
+    signIn({ name: "Ada", email: "ada@acme.test" });
+    render(<NdaPage />);
+    await screen.findByRole("heading", { name: "Standard Terms" });
+
+    await userEvent.type(screen.getByLabelText("Message"), "A joint venture{Enter}");
+
+    expect(await screen.findByText("Which state's law should govern?")).toBeInTheDocument();
+    expect(screen.getByText("Exploring a joint venture")).toBeInTheDocument(); // In the preview.
   });
 
   it("shows an error when the template cannot be loaded", async () => {

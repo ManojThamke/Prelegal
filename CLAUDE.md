@@ -21,9 +21,9 @@ When instructed to build a feature:
 
 ## AI design
 
-When writing code to make calls to LLMs, use your Cerebras skill to use LiteLLM via OpenRouter to the `openrouter/openai/gpt-oss-120b` model with Cerebras as the inference provider. You should use Structured Outputs so that you can interpret the results and populate fields in the legal document.
+When writing code to make calls to LLMs, use LiteLLM to call Google Gemini (`gemini/gemini-2.5-flash`) with the GEMINI_API_KEY (a Google AI Studio key, free tier). You should use Structured Outputs so that you can interpret the results and populate fields in the legal document.
 
-There is an OPENROUTER_API_KEY in the .env file in the project root.
+There is a GEMINI_API_KEY in the .env file in the project root. (The project originally used `openrouter/openai/gpt-oss-120b` on Cerebras via OpenRouter — see the Cerebras skill — but switched to Gemini because the OpenRouter account has no credits.)
 
 ## Technical design
 

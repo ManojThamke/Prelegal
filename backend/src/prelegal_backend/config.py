@@ -23,7 +23,7 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
-        # Local development reads secrets such as OPENROUTER_API_KEY from the repo's .env;
+        # Local development reads secrets such as GEMINI_API_KEY from the repo's .env;
         # variables that are already set (e.g. by docker compose) take precedence.
         load_dotenv(REPO_ROOT / ".env")
 

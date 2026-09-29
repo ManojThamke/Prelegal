@@ -11,9 +11,9 @@ FastAPI app (a [uv](https://docs.astral.sh/uv/) project) that serves the JSON AP
   Ids are the lower-cased file names, e.g. `mutual-nda`, `csa`, `ai-addendum`.
 - `POST /api/chat` — one turn of the AI chat that drafts a Mutual NDA. Takes
   `{messages, fields}` (the whole conversation and the current field values) and returns
-  `{reply, fields}` with the values the AI extracted merged in. Uses `gpt-oss-120b` on
-  Cerebras via LiteLLM/OpenRouter with Structured Outputs (`src/prelegal_backend/chat.py`).
-  Needs `OPENROUTER_API_KEY` (read from the repo's `.env`); returns 503 without it and 502
+  `{reply, fields}` with the values the AI extracted merged in. Uses Google Gemini
+  (`gemini-2.5-flash`) via LiteLLM with Structured Outputs (`src/prelegal_backend/chat.py`).
+  Needs `GEMINI_API_KEY` from Google AI Studio (read from the repo's `.env`); returns 503 without it and 502
   if the model call fails.
 
 ## Database

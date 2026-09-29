@@ -18,8 +18,8 @@ from pydantic.alias_generators import to_camel
 
 logger = logging.getLogger(__name__)
 
-MODEL = "openrouter/openai/gpt-oss-120b"
-EXTRA_BODY = {"provider": {"order": ["cerebras"]}}
+# Google Gemini via LiteLLM, using GEMINI_API_KEY from Google AI Studio.
+MODEL = "gemini/gemini-2.5-flash"
 
 
 class CamelModel(BaseModel):
@@ -207,8 +207,8 @@ def build_messages(request: ChatRequest) -> list[dict[str, str]]:
 ChatModel = Callable[[list[dict[str, str]]], ChatTurn]
 
 
-def cerebras_chat_model(messages: list[dict[str, str]]) -> ChatTurn:
-    """gpt-oss-120b on Cerebras via OpenRouter, with Structured Outputs."""
+def gemini_chat_model(messages: list[dict[str, str]]) -> ChatTurn:
+    """Gemini Flash with Structured Outputs."""
     from litellm import completion  # Imported lazily: litellm is slow to import.
 
     response = completion(
@@ -216,7 +216,6 @@ def cerebras_chat_model(messages: list[dict[str, str]]) -> ChatTurn:
         messages=messages,
         response_format=ChatTurn,
         reasoning_effort="low",
-        extra_body=EXTRA_BODY,
         timeout=30,
         num_retries=1,
     )
@@ -224,12 +223,12 @@ def cerebras_chat_model(messages: list[dict[str, str]]) -> ChatTurn:
 
 
 def get_chat_model() -> ChatModel:
-    if not os.environ.get("OPENROUTER_API_KEY"):
+    if not os.environ.get("GEMINI_API_KEY"):
         raise HTTPException(
             status_code=503,
-            detail="The AI assistant is not configured (OPENROUTER_API_KEY is missing).",
+            detail="The AI assistant is not configured (GEMINI_API_KEY is missing).",
         )
-    return cerebras_chat_model
+    return gemini_chat_model
 
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])

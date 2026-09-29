@@ -12,7 +12,7 @@ from prelegal_backend.chat import (
     PartyUpdates,
     apply_updates,
     build_messages,
-    cerebras_chat_model,
+    gemini_chat_model,
     get_chat_model,
 )
 
@@ -201,12 +201,12 @@ def test_chat_empty_reply_is_502(client, use_model):
 
 
 def test_chat_without_api_key_is_503(client, monkeypatch):
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
 
     response = client.post("/api/chat", json=chat_body())
 
     assert response.status_code == 503
-    assert "OPENROUTER_API_KEY" in response.json()["detail"]
+    assert "GEMINI_API_KEY" in response.json()["detail"]
 
 
 @pytest.mark.parametrize(
@@ -225,12 +225,12 @@ def test_chat_rejects_invalid_requests(client, use_model, body):
 
 
 # ---------------------------------------------------------------------------
-# Live model (opt-in: RUN_LLM_TESTS=1 and OPENROUTER_API_KEY set)
+# Live model (opt-in: RUN_LLM_TESTS=1 and GEMINI_API_KEY set)
 
 
 @pytest.mark.skipif(
-    os.environ.get("RUN_LLM_TESTS") != "1" or not os.environ.get("OPENROUTER_API_KEY"),
-    reason="set RUN_LLM_TESTS=1 (and OPENROUTER_API_KEY) to call the real model",
+    os.environ.get("RUN_LLM_TESTS") != "1" or not os.environ.get("GEMINI_API_KEY"),
+    reason="set RUN_LLM_TESTS=1 (and GEMINI_API_KEY) to call the real model",
 )
 def test_live_model_extracts_fields():
     request = ChatRequest.model_validate(
@@ -243,7 +243,7 @@ def test_live_model_extracts_fields():
         )
     )
 
-    turn = cerebras_chat_model(build_messages(request))
+    turn = gemini_chat_model(build_messages(request))
     result = apply_updates(request.fields, turn.updates)
 
     assert turn.reply

@@ -12,7 +12,8 @@ FastAPI app (a [uv](https://docs.astral.sh/uv/) project) that serves the JSON AP
 - `GET /api/documents` — the documents Prelegal can draft, each with its two party roles
   and the key terms the AI collects (`src/prelegal_backend/documents.py`).
 - `POST /api/auth/signup`, `/signin`, `/signout`, `GET /api/auth/me` — accounts
-  (`auth.py`). Passwords are hashed with scrypt; the session is an HttpOnly cookie.
+  (`auth.py`). Passwords are hashed with scrypt; the session is an HttpOnly cookie that
+  expires after 30 days.
 - `GET /api/drafts`, `GET /api/drafts/{id}`, `DELETE /api/drafts/{id}` — the signed-in
   user's saved documents, with their conversations (`drafts.py`).
 - `POST /api/chat` — one turn of the AI chat that picks a document and drafts it (requires
@@ -20,7 +21,8 @@ FastAPI app (a [uv](https://docs.astral.sh/uv/) project) that serves the JSON AP
   draft `{documentId, fields, party1, party2}`, the saved draft it continues, and the
   user's local date) and returns `{reply, draft, draftId}` with the AI's choice and
   extracted values merged in. Once a document is chosen, the draft and conversation are
-  saved after every turn. Uses Google Gemini
+  saved after every turn (a `draftId` that no longer exists starts a new saved draft).
+  Uses Google Gemini
   via LiteLLM with Structured Outputs (`src/prelegal_backend/chat.py`): `gemini-2.5-flash`,
   falling back to `gemini-3.5-flash-lite` when rate-limited. Needs `GEMINI_API_KEY` from
   Google AI Studio (read from the repo's `.env`); returns 503 without it, 429 when every

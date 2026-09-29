@@ -34,6 +34,8 @@ Other scripts: `npm run build` (static export to `out/`), `npm test` (Vitest),
 
 ## How it works
 
+- `src/lib/api.ts` is the shared fetch helper; any 401 signs the user out and returns them
+  to sign-in.
 - `src/lib/session.ts` tracks the signed-in user (`/api/auth/*`; the session is an HttpOnly
   cookie); `src/lib/drafts.ts` lists, opens, and deletes saved drafts.
 - `src/components/ui.tsx` holds the shared controls (buttons, fields, errors, spinner,

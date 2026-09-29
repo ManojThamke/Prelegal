@@ -15,6 +15,7 @@ from prelegal_backend.chat import (
     build_messages,
     gemini_chat_model,
     get_chat_model,
+    next_question,
 )
 
 
@@ -237,8 +238,34 @@ def test_failed_follow_up_keeps_the_first_turn(client, use_model):
     response = client.post("/api/chat", json=chat_body(text="We sell SaaS"))
 
     assert response.status_code == 200
-    assert response.json()["reply"] == "A Cloud Service Agreement it is."
+    assert response.json()["reply"] == (
+        "A Cloud Service Agreement it is. What should the Effective Date be? "
+        "When the agreement takes effect."
+    )
     assert response.json()["draft"]["documentId"] == "csa"
+
+
+def test_next_question_asks_for_the_next_missing_value():
+    from prelegal_backend.documents import REGISTRY
+
+    sla = REGISTRY["sla"]
+    assert next_question(sla, Draft(document_id="sla")) == (
+        'What should the Subscription Period be? How long each subscription lasts (for example, "1 year").'
+    )
+
+    filled = {f.key: "x" for f in sla.fields}
+    draft = Draft(document_id="sla", fields=filled, party1={"name": "Ada", "company": "Acme", "notice_address": "a@b.c"})
+    assert next_question(sla, draft).startswith("Who is signing for the Customer?")
+
+    draft = draft.model_copy(update={"party2": draft.party1})
+    assert next_question(sla, draft) == "Your Service Level Agreement is ready to download. Would you like to change anything?"
+
+
+def test_prompts_require_a_closing_question():
+    no_doc = build_messages(ChatRequest.model_validate(chat_body()))[0]["content"]
+    with_doc = build_messages(ChatRequest.model_validate(chat_body({"documentId": "csa"})))[0]["content"]
+    assert "End every reply with a question" in no_doc
+    assert "End every reply with a clear question" in with_doc
 
 
 def test_unsupported_request_keeps_asking(client, use_model):

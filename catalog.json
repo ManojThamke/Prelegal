@@ -1,0 +1,66 @@
+{
+  "source": "https://github.com/CommonPaper",
+  "license": "CC BY 4.0",
+  "templates": [
+    {
+      "name": "Mutual Non-Disclosure Agreement",
+      "description": "Standard Terms for a mutual NDA allowing both parties to share confidential information for an evaluation or business relationship while protecting it from unauthorized use or disclosure.",
+      "filename": "templates/Mutual-NDA.md"
+    },
+    {
+      "name": "Mutual Non-Disclosure Agreement Cover Page",
+      "description": "Cover Page for the Mutual NDA capturing the deal-specific terms (purpose, effective date, MNDA term, term of confidentiality, governing law, jurisdiction) and party signatures.",
+      "filename": "templates/Mutual-NDA-coverpage.md"
+    },
+    {
+      "name": "Cloud Service Agreement",
+      "description": "Standard terms for selling and buying cloud software (SaaS), covering service access, restrictions, fees, privacy and security, warranties, liability limits, indemnification, and term and termination.",
+      "filename": "templates/CSA.md"
+    },
+    {
+      "name": "Service Level Agreement",
+      "description": "Uptime and support commitments for a cloud service, including target uptime, target response times, service credits, and remedies when commitments are missed.",
+      "filename": "templates/sla.md"
+    },
+    {
+      "name": "Data Processing Agreement",
+      "description": "Terms governing a provider's processing of customer personal data, covering processor and subprocessor relationships, security, data subject requests, audits, deletion of personal data, and restricted international data transfers (GDPR and similar laws).",
+      "filename": "templates/DPA.md"
+    },
+    {
+      "name": "Design Partner Agreement",
+      "description": "Terms for an early-stage product collaboration in which a design partner gets access to a product in development and provides feedback to the provider.",
+      "filename": "templates/design-partner-agreement.md"
+    },
+    {
+      "name": "Professional Services Agreement",
+      "description": "Standard terms for engaging a provider to perform professional services and deliverables under statements of work, covering fees, ownership of work product, warranties, and liability.",
+      "filename": "templates/psa.md"
+    },
+    {
+      "name": "Partnership Agreement",
+      "description": "Terms for a business partnership between two companies, covering cooperation, payments, a mutual trademark license, privacy, escalation procedures, confidentiality, and liability.",
+      "filename": "templates/Partnership-Agreement.md"
+    },
+    {
+      "name": "Business Associate Agreement",
+      "description": "HIPAA business associate terms governing how a provider may use, disclose, and safeguard protected health information on behalf of a covered entity.",
+      "filename": "templates/BAA.md"
+    },
+    {
+      "name": "Software License Agreement",
+      "description": "Standard terms for licensing on-premise or self-hosted software, covering license scope, restrictions and obligations, fees, warranties, indemnification, and liability.",
+      "filename": "templates/Software-License-Agreement.md"
+    },
+    {
+      "name": "Pilot Agreement",
+      "description": "Terms for a limited-time trial or pilot of a product, allowing a customer to evaluate it before committing to a full commercial agreement.",
+      "filename": "templates/Pilot-Agreement.md"
+    },
+    {
+      "name": "AI Addendum",
+      "description": "Addendum to a services agreement addressing AI-specific terms, including use of AI services, input and output ownership, and restrictions on training models with customer data.",
+      "filename": "templates/AI-Addendum.md"
+    }
+  ]
+}

@@ -1,22 +1,26 @@
 """AI chat that drafts any supported document: POST /api/chat.
 
-The backend is stateless: each request carries the whole conversation and the current
-draft (the chosen document, its key-term values, and both parties). One structured-output
-LLM call returns the assistant's reply plus the document it chose and any values it
-extracted, which are merged into the draft returned to the client.
+Each request carries the whole conversation and the current draft (the chosen document,
+its key-term values, and both parties). One structured-output LLM call returns the
+assistant's reply plus the document it chose and any values it extracted, which are merged
+into the draft returned to the client. Once a document is chosen, the draft and conversation
+are saved to the signed-in user's account (see drafts.py).
 """
 
 import json
 import logging
 import os
+import sqlite3
 from collections.abc import Callable
 from datetime import date
-from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import Field
 
+from .auth import User, current_user
+from .db import get_db
 from .documents import DOCUMENTS, REGISTRY, CamelModel, DocumentSpec
+from .drafts import ChatMessage, Draft, save_draft
 
 logger = logging.getLogger(__name__)
 
@@ -28,24 +32,6 @@ MODELS = ("gemini/gemini-2.5-flash", "gemini/gemini-3.5-flash-lite")
 
 class QuotaExceeded(Exception):
     """Every model is rate-limited (e.g. the free tier's daily quota is used up)."""
-
-
-# ---------------------------------------------------------------------------
-# The draft, as held by the frontend
-
-
-class Party(CamelModel):
-    name: str = ""
-    title: str = ""
-    company: str = ""
-    notice_address: str = ""
-
-
-class Draft(CamelModel):
-    document_id: str | None = None
-    fields: dict[str, str] = {}  # Key-term values, keyed by FieldSpec.key.
-    party1: Party = Party()
-    party2: Party = Party()
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +79,7 @@ def apply_turn(draft: Draft, turn: ChatTurn) -> Draft:
         field = spec.field(update.key)
         if field is None:
             continue
-        value = update.value.strip()
+        value = update.value.strip()[:2000]
         if field.kind == "date" and value:
             value = _iso_date(value)
             if value is None:
@@ -105,7 +91,7 @@ def apply_turn(draft: Draft, turn: ChatTurn) -> Draft:
         if party_updates is not None:
             changes = party_updates.model_dump(exclude_none=True)
             # An empty string must never wipe a value the user has already given.
-            data[key].update({k: v.strip() for k, v in changes.items() if v.strip()})
+            data[key].update({k: v.strip()[:500] for k, v in changes.items() if v.strip()})
     return Draft.model_validate(data)
 
 
@@ -229,20 +215,17 @@ def _document_prompt(spec: DocumentSpec, draft: Draft) -> str:
     )
 
 
-class ChatMessage(BaseModel):
-    role: Literal["user", "assistant"]
-    content: str = Field(min_length=1, max_length=4000)
-
-
-class ChatRequest(BaseModel):
-    messages: list[ChatMessage] = Field(min_length=1, max_length=1000)
+class ChatRequest(CamelModel):
+    messages: list[ChatMessage] = Field(min_length=1, max_length=400)
     draft: Draft
+    draft_id: int | None = None  # The saved draft this conversation continues, if any.
     today: date | None = None  # The user's local date; defaults to the server's.
 
 
-class ChatResponse(BaseModel):
+class ChatResponse(CamelModel):
     reply: str
     draft: Draft
+    draft_id: int | None  # Set once the draft has been saved.
 
 
 # Only the most recent messages are sent to the model; the current values in the system
@@ -313,7 +296,12 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 
 @router.post("")
-def chat(request: ChatRequest, model: ChatModel = Depends(get_chat_model)) -> ChatResponse:
+def chat(
+    request: ChatRequest,
+    user: User = Depends(current_user),
+    db: sqlite3.Connection = Depends(get_db),
+    model: ChatModel = Depends(get_chat_model),
+) -> ChatResponse:
     try:
         turn = _ask(model, build_messages(request))
     except QuotaExceeded:
@@ -331,7 +319,12 @@ def chat(request: ChatRequest, model: ChatModel = Depends(get_chat_model)) -> Ch
     draft = apply_turn(request.draft, turn)
     if draft.document_id != request.draft.document_id:
         turn, draft = _introduce_document(model, request, turn, draft)
-    return ChatResponse(reply=turn.reply, draft=draft)
+
+    draft_id = request.draft_id
+    if draft.document_id is not None:  # Nothing to save until a document is chosen.
+        messages = [*request.messages, ChatMessage(role="assistant", content=turn.reply[:4000])]
+        draft_id = save_draft(db, user, draft_id, draft, messages)
+    return ChatResponse(reply=turn.reply, draft=draft, draft_id=draft_id)
 
 
 def _introduce_document(

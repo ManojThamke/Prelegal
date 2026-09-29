@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 
 import Chat from "@/components/Chat";
 import DocumentPreview from "@/components/DocumentPreview";
+import { Button, Disclaimer, ErrorMessage, Spinner } from "@/components/ui";
+import type { ChatMessage, ChatResult } from "@/lib/chat";
 import {
   emptyDraft,
   loadClauses,
@@ -14,74 +16,104 @@ import {
 } from "@/lib/documents";
 import type { Clause } from "@/lib/template";
 
-type Loaded = { id: string; clauses?: Clause[]; error?: string };
+export type Resume = { draft: Draft; draftId: number; messages: ChatMessage[] };
 
-/** The AI chat beside a live preview of whichever document the chat has chosen. */
-export default function DraftWorkspace({ documents }: { documents: DocumentSpec[] }) {
-  const [draft, setDraft] = useState<Draft>(emptyDraft);
+type Props = {
+  documents: DocumentSpec[];
+  /** A saved draft to reopen. */
+  resume?: Resume;
+  /** Called when the draft is first saved, with its id. */
+  onSaved?: (draftId: number) => void;
+};
+
+/**
+ * The AI chat beside a live preview of whichever document the chat has chosen. Drafts
+ * are saved by the backend as the chat goes; `resume` reopens a saved one.
+ */
+export default function DraftWorkspace({ documents, resume, onSaved }: Props) {
+  const [draft, setDraft] = useState<Draft>(resume?.draft ?? emptyDraft);
+  const [draftId, setDraftId] = useState<number | null>(resume?.draftId ?? null);
   const spec = documents.find((d) => d.id === draft.documentId) ?? null;
 
-  // The chosen document's standard terms, loaded when the chat picks (or switches) it.
-  const [loaded, setLoaded] = useState<Loaded | null>(null);
+  function onChat(result: ChatResult) {
+    setDraft(result.draft);
+    if (result.draftId !== null && result.draftId !== draftId) {
+      setDraftId(result.draftId);
+      onSaved?.(result.draftId);
+      // Make this URL reopen the saved draft (e.g. after a refresh).
+      window.history.replaceState(null, "", `/draft/?id=${result.draftId}`);
+    }
+  }
+
+  return (
+    <>
+      <div className="mb-6">
+        <h1 className="font-serif text-3xl font-semibold text-brand-navy">{spec?.name ?? "New document"}</h1>
+        <p className="mt-1 text-slate-600">
+          {draftId
+            ? "Saved to your documents as you go."
+            : "Tell the assistant what you need. It will pick the right agreement and fill it in with you."}
+        </p>
+      </div>
+
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
+        <section
+          aria-label="Assistant"
+          className="h-[34rem] overflow-hidden rounded-lg border border-slate-200 bg-white lg:sticky lg:top-6 lg:h-[calc(100vh-9rem)]"
+        >
+          <Chat draft={draft} draftId={draftId} initialMessages={resume?.messages} onChange={onChat} />
+        </section>
+
+        <div className="min-w-0 space-y-4">
+          {/* Keyed by document, so switching documents loads the new one's terms afresh. */}
+          {spec ? <DocumentPanel key={spec.id} spec={spec} draft={draft} /> : <Catalog documents={documents} />}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** The chosen document: its standard terms are loaded once, then previewed live. */
+function DocumentPanel({ spec, draft }: { spec: DocumentSpec; draft: Draft }) {
+  const [clauses, setClauses] = useState<Clause[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
-    if (!spec) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- drop a previous result (e.g. a stale error)
-    setLoaded(null);
     let current = true;
     loadClauses(spec).then(
-      (clauses) => current && setLoaded({ id: spec.id, clauses }),
+      (loaded) => current && setClauses(loaded),
       (e) => {
         console.error(e);
-        if (current) setLoaded({ id: spec.id, error: `Sorry, the ${spec.name} could not be loaded.` });
+        if (current) setError(`The ${spec.name} couldn't be loaded. Refresh the page to try again.`);
       },
     );
     return () => {
       current = false;
     };
   }, [spec]);
-  const terms = spec && loaded?.id === spec.id ? loaded : null;
 
+  if (error) return <ErrorMessage>{error}</ErrorMessage>;
+  if (!clauses) return <Spinner label={`Loading the ${spec.name}…`} />;
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
-      <div className="h-[32rem] overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 lg:sticky lg:top-6 lg:h-[calc(100vh-3rem)]">
-        <Chat draft={draft} onChange={setDraft} />
-      </div>
-
-      <div className="space-y-4">
-        {!spec ? (
-          <Catalog documents={documents} />
-        ) : terms?.error ? (
-          <p role="alert" className="text-rose-600">
-            {terms.error}
-          </p>
-        ) : terms?.clauses ? (
-          <>
-            <DownloadBar spec={spec} clauses={terms.clauses} draft={draft} />
-            <DocumentPreview spec={spec} clauses={terms.clauses} draft={draft} />
-          </>
-        ) : (
-          <p role="status" className="text-slate-600">
-            Loading the {spec.name}…
-          </p>
-        )}
-      </div>
-    </div>
+    <>
+      <DownloadBar spec={spec} clauses={clauses} draft={draft} />
+      <Disclaimer />
+      <DocumentPreview spec={spec} clauses={clauses} draft={draft} />
+    </>
   );
 }
 
 /** Shown until the chat has chosen a document. */
 function Catalog({ documents }: { documents: DocumentSpec[] }) {
   return (
-    <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-      <h2 className="text-lg font-semibold text-brand-navy">Your document will appear here</h2>
-      <p className="mt-1 text-sm text-slate-600">
-        Tell the assistant what you need. These are the agreements it can draft:
-      </p>
-      <ul className="mt-4 grid gap-3 sm:grid-cols-2">
+    <section className="rounded-lg border border-slate-200 bg-white p-6">
+      <h2 className="font-serif text-xl font-semibold text-brand-navy">Your document will appear here</h2>
+      <p className="mt-1 text-slate-600">These are the agreements the assistant can draft:</p>
+      <ul className="mt-5 grid gap-x-8 gap-y-4 sm:grid-cols-2">
         {documents.map((doc) => (
-          <li key={doc.id} className="rounded-lg border border-slate-200 p-3">
-            <p className="text-sm font-semibold text-brand-navy">{doc.name}</p>
-            <p className="mt-1 text-xs text-slate-600">{doc.description}</p>
+          <li key={doc.id} className="border-t border-slate-100 pt-3">
+            <p className="font-semibold text-brand-navy">{doc.name}</p>
+            <p className="mt-0.5 text-sm leading-relaxed text-slate-600">{doc.description}</p>
           </li>
         ))}
       </ul>
@@ -113,34 +145,30 @@ function DownloadBar({ spec, clauses, draft }: { spec: DocumentSpec; clauses: Cl
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e) {
       console.error(e);
-      setError("Sorry, the PDF could not be generated. Please try again.");
+      setError("The PDF couldn't be created. Try again.");
     } finally {
       setDownloading(false);
     }
   }
 
   return (
-    <>
+    <div className="sticky top-0 z-10 -mx-1 space-y-2 bg-paper/95 px-1 py-2 backdrop-blur">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-slate-600">
+        <p className="line-clamp-2 min-w-0 flex-1 text-sm text-slate-700">
           {missing.length === 0 ? (
-            "All required terms are complete."
+            "All required terms are filled in."
           ) : (
             <>
-              <span className="font-medium text-slate-800">Still needed:</span> {missing.join(", ")}
+              <span className="highlight font-semibold text-brand-navy">Still needed ({missing.length}):</span>{" "}
+              {missing.join(", ")}
             </>
           )}
         </p>
-        <button
-          type="button"
-          onClick={download}
-          disabled={missing.length > 0 || downloading}
-          className="rounded-md bg-brand-purple px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:bg-slate-300"
-        >
+        <Button onClick={download} disabled={missing.length > 0 || downloading}>
           {downloading ? "Preparing PDF…" : "Download PDF"}
-        </button>
+        </Button>
       </div>
-      {error && <p className="text-sm text-rose-600">{error}</p>}
-    </>
+      {error && <ErrorMessage>{error}</ErrorMessage>}
+    </div>
   );
 }

@@ -5,9 +5,10 @@ cd "$(dirname "$0")/.."
 
 docker compose up -d --build
 
+# Wait for the prelegal container's own health check, not just anything on port 8000.
 echo "Waiting for Prelegal to start..."
 for _ in $(seq 1 60); do
-  if curl -fsS http://localhost:8000/api/health > /dev/null 2>&1; then
+  if [ "$(docker inspect -f '{{.State.Health.Status}}' prelegal 2>/dev/null)" = "healthy" ]; then
     echo "Prelegal is running at http://localhost:8000"
     exit 0
   fi

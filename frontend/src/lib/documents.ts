@@ -1,6 +1,7 @@
 // The documents Prelegal can draft (from the backend's /api/documents registry), the
 // draft being filled in, and the content derived from it for the preview and the PDF.
 
+import { api } from "./api";
 import { parseClauses, type Clause } from "./template";
 
 export type FieldSpec = {
@@ -37,20 +38,14 @@ const emptyParty: Party = { name: "", title: "", company: "", noticeAddress: "" 
 
 export const emptyDraft: Draft = { documentId: null, fields: {}, party1: emptyParty, party2: emptyParty };
 
-async function getJson<T>(url: string): Promise<T> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Could not load ${url} (HTTP ${response.status})`);
-  return response.json();
-}
-
 export function fetchDocuments(): Promise<DocumentSpec[]> {
-  return getJson("/api/documents");
+  return api("/api/documents");
 }
 
 /** Fetches and parses the document's standard terms. */
 export async function loadClauses(spec: DocumentSpec): Promise<Clause[]> {
   const templates = await Promise.all(
-    spec.templates.map((id) => getJson<{ content: string }>(`/api/templates/${encodeURIComponent(id)}`)),
+    spec.templates.map((id) => api<{ content: string }>(`/api/templates/${encodeURIComponent(id)}`)),
   );
   const clauses = templates.flatMap((t) => parseClauses(t.content));
   if (clauses.length === 0) throw new Error(`Could not parse the ${spec.name} template`);

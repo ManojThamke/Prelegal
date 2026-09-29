@@ -1,29 +1,20 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Public_Sans, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+// Public Sans for the interface; Source Serif for page titles and the documents themselves.
+const publicSans = Public_Sans({ variable: "--font-public-sans", subsets: ["latin"] });
+const sourceSerif = Source_Serif_4({ variable: "--font-source-serif", subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Prelegal",
-  description: "Draft legal agreements from Common Paper templates.",
+  description: "Draft legal agreements from Common Paper templates with an AI assistant.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col bg-slate-50 font-sans text-slate-900">{children}</body>
+    <html lang="en" className={`${publicSans.variable} ${sourceSerif.variable} h-full antialiased`}>
+      <body className="flex min-h-full flex-col bg-paper font-sans text-slate-800">{children}</body>
     </html>
   );
 }

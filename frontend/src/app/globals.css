@@ -1,15 +1,50 @@
 @import "tailwindcss";
 
 @theme inline {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-public-sans);
+  --font-serif: var(--font-source-serif);
 }
 
-/* Prelegal brand colors. */
+/* Prelegal brand colors. Yellow means "needs your input" throughout the app. */
 @theme {
   --color-brand-yellow: #ecad0a;
   --color-brand-blue: #209dd7;
   --color-brand-purple: #753991;
   --color-brand-navy: #032147;
   --color-brand-gray: #888888;
+  --color-paper: #f6f8fb;
+  --color-highlight: #fbe7a8; /* Highlighter yellow, for values still missing. */
+}
+
+/* A highlighter stroke behind text: missing values and the wordmark. */
+.highlight {
+  background-image: linear-gradient(transparent 55%, var(--color-highlight) 55%);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Sign-in panel: key terms get highlighted in turn, like a draft being filled in. */
+.term-reveal {
+  animation: term-reveal 500ms ease-out both;
+}
+
+@keyframes term-reveal {
+  from {
+    background-color: transparent;
+    color: inherit;
+  }
+  to {
+    background-color: color-mix(in srgb, var(--color-brand-yellow) 85%, transparent);
+    color: var(--color-brand-navy);
+  }
 }

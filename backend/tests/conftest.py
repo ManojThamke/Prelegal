@@ -32,3 +32,15 @@ def settings(tmp_path: Path, static_dir: Path) -> Settings:
 def client(settings: Settings):
     with TestClient(create_app(settings)) as client:
         yield client
+
+
+def sign_up(client, email="ada@acme.test", name="Ada Lovelace", password="correct horse"):
+    """Creates an account; the client keeps its session cookie."""
+    response = client.post("/api/auth/signup", json={"email": email, "name": name, "password": password})
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+@pytest.fixture
+def signed_in(client):
+    return sign_up(client)

@@ -6,6 +6,7 @@ import {
   type DocumentSpec,
   type Draft,
 } from "@/lib/documents";
+import { DISCLAIMER } from "@/components/ui";
 import { clauseLabel, clauseNumber, isSection, type Clause, type Run } from "@/lib/template";
 
 type Props = { spec: DocumentSpec; clauses: Clause[]; draft: Draft };
@@ -13,16 +14,17 @@ type Props = { spec: DocumentSpec; clauses: Clause[]; draft: Draft };
 /** HTML preview of the drafted document: Key Terms, signatures, and the Standard Terms. */
 export default function DocumentPreview({ spec, clauses, draft }: Props) {
   return (
-    <article className="mx-auto max-w-[8.5in] bg-white px-10 py-12 font-serif text-[13px] leading-relaxed text-slate-900 shadow-lg ring-1 ring-slate-200 sm:px-16">
-      <h1 className="text-center text-2xl font-bold">{spec.name}</h1>
+    <article aria-label={spec.name} className="mx-auto max-w-[8.5in] rounded-sm bg-white px-8 py-12 font-serif text-[14px] leading-relaxed text-slate-900 shadow-[0_1px_3px_rgba(3,33,71,0.08),0_8px_24px_rgba(3,33,71,0.06)] ring-1 ring-slate-200 sm:px-16">
+      <p className="text-center font-sans text-xs text-slate-500">Draft for legal review</p>
+      <h2 className="mt-2 text-center text-2xl font-bold text-brand-navy">{spec.name}</h2>
 
-      <h2 className="mt-8 text-sm font-bold uppercase tracking-wide">Key Terms</h2>
+      <h3 className="mt-10 text-lg font-bold text-brand-navy">Key terms</h3>
       <dl className="mt-2 divide-y divide-slate-200 border-y border-slate-200">
         {keyTerms(spec, draft).map((term) => (
           <div key={term.label} className="grid grid-cols-[minmax(0,12rem)_minmax(0,1fr)] gap-4 py-2">
             <dt className="font-bold">{term.label}</dt>
             <dd
-              className={`whitespace-pre-wrap ${term.placeholder ? "rounded bg-amber-100 px-1 text-amber-900" : ""}`}
+              className={`whitespace-pre-wrap ${term.placeholder ? "highlight font-sans text-sm text-slate-700" : ""}`}
             >
               {term.value}
             </dd>
@@ -60,14 +62,17 @@ export default function DocumentPreview({ spec, clauses, draft }: Props) {
         </tbody>
       </table>
 
-      <h1 className="mt-16 border-t border-slate-300 pt-12 text-center text-2xl font-bold">Standard Terms</h1>
+      <h3 className="mt-16 border-t border-slate-300 pt-12 text-center text-2xl font-bold text-brand-navy">Standard Terms</h3>
       <div className="mt-6 space-y-4 text-justify">
         {clauses.map((clause, i) => (
           <ClauseView key={i} clause={clause} number={clause.marker} />
         ))}
       </div>
 
-      <p className="mt-6 text-xs text-slate-500">
+      <p className="mt-10 border-t border-slate-200 pt-4 font-sans text-xs leading-relaxed text-slate-500">
+        {DISCLAIMER}
+      </p>
+      <p className="mt-2 text-xs text-slate-500">
         <a href={ATTRIBUTION_URL} target="_blank" rel="noreferrer" className="underline">
           {attribution(spec)}
         </a>
@@ -85,9 +90,9 @@ function ClauseView({ clause, number }: { clause: Clause; number: string }) {
   if (isSection(clause)) {
     return (
       <section className="space-y-2">
-        <h3 className="font-bold">
+        <h4 className="font-bold">
           {label} {clause.title}
-        </h3>
+        </h4>
         {clause.body.length > 0 && (
           <p>
             <Runs runs={clause.body} />

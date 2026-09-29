@@ -10,7 +10,7 @@ import Chat from "./Chat";
 
 const updated: Draft = { ...emptyDraft, documentId: "mutual-nda", fields: { purpose: "A joint venture" } };
 
-const reply = (text: string, draft = updated) => Response.json({ reply: text, draft });
+const reply = (text: string, draft = updated) => Response.json({ reply: text, draft, draftId: 5 });
 
 beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -18,21 +18,21 @@ beforeEach(() => {
 
 describe("Chat", () => {
   it("opens with the greeting", () => {
-    render(<Chat draft={emptyDraft} onChange={() => {}} />);
+    render(<Chat draft={emptyDraft} draftId={null} onChange={() => {}} />);
     expect(screen.getByText(GREETING.content)).toBeInTheDocument();
   });
 
   it("sends the conversation and draft, shows the reply and applies the new draft", async () => {
     const fetchMock = stubFetch(reply("Great. When should it take effect?"));
     const onChange = vi.fn();
-    render(<Chat draft={emptyDraft} onChange={onChange} />);
+    render(<Chat draft={emptyDraft} draftId={null} onChange={onChange} />);
 
     await userEvent.type(screen.getByLabelText("Message"), "A joint venture");
     await userEvent.click(screen.getByRole("button", { name: "Send" }));
 
     expect(await screen.findByText("Great. When should it take effect?")).toBeInTheDocument();
     expect(screen.getByText("A joint venture")).toBeInTheDocument();
-    expect(onChange).toHaveBeenCalledWith(updated);
+    expect(onChange).toHaveBeenCalledWith({ reply: "Great. When should it take effect?", draft: updated, draftId: 5 });
 
     expect(requestBody(fetchMock)).toMatchObject({
       messages: [GREETING, { role: "user", content: "A joint venture" }],
@@ -42,7 +42,7 @@ describe("Chat", () => {
 
   it("sends on Enter, adds a new line on Shift+Enter", async () => {
     const fetchMock = stubFetch(reply("Thanks!"));
-    render(<Chat draft={emptyDraft} onChange={() => {}} />);
+    render(<Chat draft={emptyDraft} draftId={null} onChange={() => {}} />);
     const input = screen.getByLabelText("Message");
 
     await userEvent.type(input, "Line one{Shift>}{Enter}{/Shift}line two");
@@ -57,7 +57,7 @@ describe("Chat", () => {
   it("shows a thinking indicator and blocks sending while waiting", async () => {
     let respond!: (response: Response) => void;
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => (respond = resolve))));
-    render(<Chat draft={emptyDraft} onChange={() => {}} />);
+    render(<Chat draft={emptyDraft} draftId={null} onChange={() => {}} />);
 
     await userEvent.type(screen.getByLabelText("Message"), "Hello");
     await userEvent.click(screen.getByRole("button", { name: "Send" }));
@@ -76,7 +76,7 @@ describe("Chat", () => {
       reply("Back again!"),
     );
     const onChange = vi.fn();
-    render(<Chat draft={emptyDraft} onChange={onChange} />);
+    render(<Chat draft={emptyDraft} draftId={null} onChange={onChange} />);
 
     await userEvent.type(screen.getByLabelText("Message"), "Hello");
     await userEvent.click(screen.getByRole("button", { name: "Send" }));

@@ -1,55 +1,89 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
 
-import AppHeader from "@/components/AppHeader";
-import DraftWorkspace from "@/components/DraftWorkspace";
+import AppShell from "@/components/AppShell";
+import DraftWorkspace, { type Resume } from "@/components/DraftWorkspace";
+import { ErrorMessage, Spinner } from "@/components/ui";
 import { fetchDocuments, type DocumentSpec } from "@/lib/documents";
-import { useUser } from "@/lib/session";
+import { getDraft } from "@/lib/drafts";
 
+/** /draft/ starts a new document; /draft/?id=N reopens a saved one. */
 export default function DraftPage() {
-  const router = useRouter();
-  const user = useUser();
-  const [documents, setDocuments] = useState<DocumentSpec[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (user === null) router.replace("/");
-  }, [user, router]);
-
-  useEffect(() => {
-    fetchDocuments().then(setDocuments, (e) => {
-      console.error(e);
-      setError("Sorry, the document catalog could not be loaded. Please refresh to try again.");
-    });
-  }, []);
-
-  if (!user) return null;
-
   return (
-    <>
-      <AppHeader user={user} />
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
-        <header className="mb-8">
-          <h1 className="text-3xl font-bold text-brand-navy">Draft an agreement</h1>
-          <p className="mt-2 max-w-2xl text-slate-600">
-            Tell our AI assistant what you need. It picks the right agreement, fills it in as you
-            chat, and you can download the completed document as a PDF.
-          </p>
-        </header>
-        {error ? (
-          <p role="alert" className="text-rose-600">
-            {error}
-          </p>
-        ) : documents ? (
-          <DraftWorkspace documents={documents} />
-        ) : (
-          <p role="status" className="text-slate-600">
-            Loading…
-          </p>
-        )}
-      </main>
-    </>
+    <AppShell>
+      {() => (
+        // useSearchParams needs a Suspense boundary in a statically exported page.
+        <Suspense fallback={<Spinner label="Loading…" />}>
+          <Draft />
+        </Suspense>
+      )}
+    </AppShell>
+  );
+}
+
+type State =
+  | { status: "loading" }
+  | { status: "ready"; documents: DocumentSpec[]; resume?: Resume; key: number }
+  | { status: "error"; message: string };
+
+function Draft() {
+  const id = Number(useSearchParams().get("id")) || null;
+  const [state, setState] = useState<State>({ status: "loading" });
+  // When the workspace saves a new draft, the URL gains its id; that must not reload (and
+  // reset) the workspace. Only the workspace sets this, so re-running the effect (as React's
+  // development mode does) still loads normally.
+  const justSaved = useRef<number | null>(null);
+  const loads = useRef(0);
+
+  useEffect(() => {
+    if (id !== null && id === justSaved.current) return;
+    justSaved.current = null;
+    let current = true;
+    const saved = id ? getDraft(id) : Promise.resolve(null);
+    Promise.all([fetchDocuments(), saved]).then(
+      ([documents, draft]) => {
+        if (!current) return;
+        const resume = draft ? { draft: draft.draft, draftId: draft.id, messages: draft.messages } : undefined;
+        setState({ status: "ready", documents, resume, key: ++loads.current });
+      },
+      (e) => {
+        console.error(e);
+        if (!current) return;
+        setState({
+          status: "error",
+          message:
+            e?.status === 404
+              ? "This document doesn't exist or belongs to another account."
+              : "The drafting workspace couldn't be loaded. Refresh the page to try again.",
+        });
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [id]);
+
+  if (state.status === "loading") return <Spinner label="Loading…" />;
+  if (state.status === "error") {
+    return (
+      <div className="max-w-xl space-y-4">
+        <ErrorMessage>{state.message}</ErrorMessage>
+        <Link href="/documents/" className="font-semibold text-brand-blue hover:underline">
+          Back to your documents
+        </Link>
+      </div>
+    );
+  }
+  // Keyed per load, so opening another document (or a new one) starts a fresh workspace.
+  return (
+    <DraftWorkspace
+      key={state.key}
+      documents={state.documents}
+      resume={state.resume}
+      onSaved={(draftId) => (justSaved.current = draftId)}
+    />
   );
 }

@@ -5,13 +5,16 @@ FastAPI backend, which also provides the `/api` endpoints it calls.
 
 ## Pages
 
-- `/` — placeholder sign-in ([PL-5](https://iamitbhoirr.atlassian.net/browse/PL-5)). Any
-  name and valid-looking email lets the user in; there is no authentication yet. The user
-  is kept in localStorage (`src/lib/session.ts`).
+- `/` — sign in, and `/signup/` — create an account
+  ([PL-8](https://iamitbhoirr.atlassian.net/browse/PL-8)). Signed-in users go to their documents.
+- `/documents/` — the user's saved documents: open, delete, or start a new one.
 - `/draft/` — the drafting workspace ([PL-7](https://iamitbhoirr.atlassian.net/browse/PL-7)).
   Tell the AI assistant what you need; it picks the agreement (or offers the closest one it
-  can draft), fills it in as you chat, and you can download it as a PDF. Signed-out users
-  are sent back to `/`.
+  can draft) and fills it in as you chat. The draft is saved as you go, and
+  `/draft/?id=N` reopens it with its conversation. Download it as a PDF when complete.
+
+Signed-out visitors to `/documents/` and `/draft/` are sent to `/`. Every document carries
+a disclaimer that it is a draft for legal review.
 
 ## Development
 
@@ -31,6 +34,10 @@ Other scripts: `npm run build` (static export to `out/`), `npm test` (Vitest),
 
 ## How it works
 
+- `src/lib/session.ts` tracks the signed-in user (`/api/auth/*`; the session is an HttpOnly
+  cookie); `src/lib/drafts.ts` lists, opens, and deletes saved drafts.
+- `src/components/ui.tsx` holds the shared controls (buttons, fields, errors, spinner,
+  disclaimer); `AppShell.tsx` is the signed-in layout and `AuthLayout.tsx` the sign-in one.
 - `src/lib/documents.ts` loads the document registry (`/api/documents`) and derives the
   Key Terms, signature rows, and still-missing items from the current draft.
 - `src/lib/template.ts` parses the Common Paper templates (fetched from

@@ -1,5 +1,6 @@
 import { Document, Link, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 
+import { DISCLAIMER } from "@/components/ui";
 import {
   ATTRIBUTION_URL,
   attribution,
@@ -14,7 +15,9 @@ import { clauseLabel, clauseNumber, isSection, type Clause, type Run } from "@/l
 const styles = StyleSheet.create({
   page: { paddingVertical: 60, paddingHorizontal: 64, fontFamily: "Times-Roman", fontSize: 10.5, lineHeight: 1.45 },
   title: { fontFamily: "Times-Bold", fontSize: 18, textAlign: "center", marginBottom: 18 },
-  subheading: { fontFamily: "Times-Bold", fontSize: 11, marginBottom: 4, textTransform: "uppercase" },
+  subheading: { fontFamily: "Times-Bold", fontSize: 12, marginBottom: 4 },
+  draftNote: { fontSize: 8, color: "#666", textAlign: "center", marginBottom: 4 },
+  footer: { position: "absolute", bottom: 24, left: 64, right: 64, fontSize: 7, color: "#777", textAlign: "center" },
   termRow: { flexDirection: "row", paddingVertical: 4, borderBottomWidth: 0.5, borderColor: "#ccc" },
   termLabel: { width: 150, fontFamily: "Times-Bold" },
   termValue: { flex: 1 },
@@ -38,8 +41,10 @@ export default function DocumentPdf({ spec, clauses, draft }: Props) {
   return (
     <Document title={spec.name} author="Prelegal">
       <Page size="LETTER" style={styles.page}>
+        <Footer />
+        <Text style={styles.draftNote}>Draft for legal review</Text>
         <Text style={styles.title}>{spec.name}</Text>
-        <Text style={styles.subheading}>Key Terms</Text>
+        <Text style={styles.subheading}>Key terms</Text>
         {keyTerms(spec, draft).map((term) => (
           <View key={term.label} style={styles.termRow} wrap={false}>
             <Text style={styles.termLabel}>{term.label}</Text>
@@ -72,6 +77,7 @@ export default function DocumentPdf({ spec, clauses, draft }: Props) {
       </Page>
 
       <Page size="LETTER" style={styles.page}>
+        <Footer />
         <Text style={styles.title}>Standard Terms</Text>
         {clauses.map((clause, i) => (
           <ClauseView key={i} clause={clause} number={clause.marker} />
@@ -140,4 +146,13 @@ function Runs({ runs }: { runs: Run[] }) {
         return <Text key={i}>{run.text}</Text>;
     }
   });
+}
+
+/** The disclaimer, repeated at the bottom of every page. */
+function Footer() {
+  return (
+    <Text fixed style={styles.footer}>
+      {DISCLAIMER}
+    </Text>
+  );
 }

@@ -50,7 +50,7 @@ class FakeModel:
 
 
 @pytest.fixture
-def use_model(client):
+def use_model(client, signed_in):
     def install(*turns):
         model = FakeModel(*turns)
         client.app.dependency_overrides[get_chat_model] = lambda: model
@@ -277,6 +277,68 @@ def test_unsupported_request_keeps_asking(client, use_model):
     assert len(model.calls) == 1
 
 
+def test_chat_requires_sign_in(client):
+    response = client.post("/api/chat", json=chat_body())
+    assert response.status_code == 401
+
+
+def test_chat_saves_the_draft_once_a_document_is_chosen(client, use_model):
+    use_model(
+        turn("Which kind of agreement?"),
+        turn("A CSA it is.", document_id="csa"),
+        turn("How long is each subscription?"),
+        turn("Got it.", fields={"subscriptionPeriod": "1 year"}),
+    )
+
+    first = client.post("/api/chat", json=chat_body(text="Hi")).json()
+    assert first["draftId"] is None
+    assert client.get("/api/drafts").json() == []
+
+    second = client.post("/api/chat", json=chat_body(first["draft"], "We sell SaaS")).json()
+    draft_id = second["draftId"]
+    assert draft_id is not None
+
+    body = {**chat_body(second["draft"], "1 year"), "draftId": draft_id}
+    third = client.post("/api/chat", json=body).json()
+    assert third["draftId"] == draft_id
+
+    saved = client.get(f"/api/drafts/{draft_id}").json()
+    assert saved["draft"]["fields"] == {"subscriptionPeriod": "1 year"}
+    assert saved["messages"][-2:] == [
+        {"role": "user", "content": "1 year"},
+        {"role": "assistant", "content": "Got it."},
+    ]
+    assert len(client.get("/api/drafts").json()) == 1
+
+
+def test_chat_cannot_continue_someone_elses_draft(client, use_model):
+    use_model(turn("OK", document_id="csa"), turn("OK"), turn("Eve's reply"))
+    draft_id = client.post("/api/chat", json=chat_body(text="SaaS")).json()["draftId"]
+
+    client.post("/api/auth/signout")
+    client.post("/api/auth/signup", json={"email": "eve@evil.test", "name": "Eve", "password": "password1"})
+    body = {**chat_body({"documentId": "csa"}, "Hi"), "draftId": draft_id}
+    response = client.post("/api/chat", json=body)
+
+    # Eve's conversation is saved as her own new draft; Ada's is untouched.
+    assert response.status_code == 200
+    assert response.json()["draftId"] != draft_id
+    assert [d["id"] for d in client.get("/api/drafts").json()] == [response.json()["draftId"]]
+
+
+def test_chat_with_a_deleted_draft_saves_a_new_one(client, use_model):
+    use_model(turn("OK", document_id="csa"), turn("OK"), turn("Still here"))
+    draft_id = client.post("/api/chat", json=chat_body(text="SaaS")).json()["draftId"]
+    client.delete(f"/api/drafts/{draft_id}")
+
+    body = {**chat_body({"documentId": "csa"}, "More"), "draftId": draft_id}
+    response = client.post("/api/chat", json=body)
+
+    assert response.status_code == 200
+    assert response.json()["reply"] == "Still here"
+    assert client.get(f"/api/drafts/{response.json()['draftId']}").status_code == 200
+
+
 def test_chat_model_failure_is_502(client, use_model):
     use_model(RuntimeError("provider down"))
 
@@ -300,7 +362,7 @@ def test_chat_quota_exceeded_is_429(client, use_model):
     assert "usage limit" in response.json()["detail"]
 
 
-def test_chat_without_api_key_is_503(client, monkeypatch):
+def test_chat_without_api_key_is_503(client, signed_in, monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
 
     response = client.post("/api/chat", json=chat_body())
@@ -317,6 +379,7 @@ def test_chat_without_api_key_is_503(client, monkeypatch):
         {"messages": [{"role": "user", "content": "x" * 4001}], "draft": {}},
         {"messages": [{"role": "user", "content": "Hi"}], "draft": {}, "today": "soon"},
         {"messages": [{"role": "user", "content": "Hi"}], "draft": {"fields": {"a": 1}}},
+        {"messages": [{"role": "user", "content": "Hi"}], "draft": {"documentId": "lease"}},
     ],
 )
 def test_chat_rejects_invalid_requests(client, use_model, body):
@@ -384,7 +447,7 @@ live = pytest.mark.skipif(
 
 
 @live
-def test_live_model_chooses_and_fills_a_document(client):
+def test_live_model_chooses_and_fills_a_document(client, signed_in):
     opening = chat_body(text="We sell a SaaS product and need our standard customer contract.")
     first = client.post("/api/chat", json=opening).json()
     assert first["draft"]["documentId"] == "csa", first["reply"]

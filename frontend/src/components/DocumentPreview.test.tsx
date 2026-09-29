@@ -12,7 +12,7 @@ describe("DocumentPreview", () => {
 
     render(<DocumentPreview spec={CSA} clauses={parseClauses(readTemplate("csa"))} draft={draft} />);
 
-    expect(screen.getByRole("heading", { level: 1, name: "Cloud Service Agreement" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Cloud Service Agreement" })).toBeInTheDocument();
     expect(screen.getByText("Delaware")).toBeInTheDocument();
     expect(screen.getByText("[Subscription Period]")).toBeInTheDocument();
     const table = screen.getByRole("table");

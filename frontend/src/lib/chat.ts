@@ -1,10 +1,12 @@
 // Client for the backend's AI chat (POST /api/chat), which drafts the chosen document.
 
+import { api, ApiError } from "./api";
 import { todayIso, type Draft } from "./documents";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
-export type ChatResult = { reply: string; draft: Draft };
+/** `draftId` is set once the chat has chosen a document and saved the draft. */
+export type ChatResult = { reply: string; draft: Draft; draftId: number | null };
 
 /** The assistant's first message, shown before any call to the backend. */
 export const GREETING: ChatMessage = {
@@ -15,25 +17,16 @@ export const GREETING: ChatMessage = {
 };
 
 /** Sends the conversation and current draft; returns the reply and the updated draft. */
-export async function sendChat(messages: ChatMessage[], draft: Draft): Promise<ChatResult> {
-  const response = await fetch("/api/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    // The user's local date, so "today" means the same day to the AI as to the user.
-    body: JSON.stringify({ messages, draft, today: todayIso() }),
-  });
-  if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(errorMessage(body?.detail, response.status));
+export async function sendChat(messages: ChatMessage[], draft: Draft, draftId: number | null): Promise<ChatResult> {
+  try {
+    return await api<ChatResult>("/api/chat", {
+      method: "POST",
+      // The user's local date, so "today" means the same day to the AI as to the user.
+      body: { messages, draft, draftId, today: todayIso() },
+      fallback: "The AI assistant didn't respond. Try again.",
+    });
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 422) throw new Error(`Your message could not be sent: ${e.message}`);
+    throw e;
   }
-  return response.json();
-}
-
-/** FastAPI errors carry a string `detail`, or a list of validation errors (HTTP 422). */
-function errorMessage(detail: unknown, status: number): string {
-  if (typeof detail === "string") return detail;
-  if (Array.isArray(detail) && typeof detail[0]?.msg === "string") {
-    return `Your message could not be sent: ${detail[0].msg}`;
-  }
-  return `The AI assistant failed (HTTP ${status})`;
 }

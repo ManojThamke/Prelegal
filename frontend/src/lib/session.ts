@@ -1,67 +1,84 @@
-// Placeholder sign-in. There is no authentication yet: the user's name and email
-// are kept in localStorage so the app can greet them and gate its pages.
+// Accounts, via the backend's /api/auth. The session itself is an HttpOnly cookie, so
+// this module only tracks who is signed in.
 
-import { useMemo, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
-export type User = { name: string; email: string };
+import { api, onUnauthorized } from "./api";
 
-const STORAGE_KEY = "prelegal.user";
+export type User = { id: number; name: string; email: string };
+
+type Session = {
+  /** `undefined` while the session is being checked; `null` when signed out. */
+  user: User | null | undefined;
+  /** Whether the user was signed out because their session ended (e.g. a server restart). */
+  expired: boolean;
+};
+
+let session: Session = { user: undefined, expired: false };
+let checking: Promise<void> | null = null;
+let version = 0; // Bumped on every sign-in/out, so a slower, older check can't overwrite it.
 const listeners = new Set<() => void>();
 
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-/** Returns an error message for invalid sign-in details, or null when they are valid. */
-export function validateSignIn({ name, email }: User): string | null {
-  if (!name.trim()) return "Please enter your name.";
-  if (!EMAIL.test(email.trim())) return "Please enter a valid email address.";
-  return null;
-}
-
-export function parseUser(raw: string | null): User | null {
-  if (!raw) return null;
-  try {
-    const value = JSON.parse(raw);
-    return typeof value?.name === "string" && typeof value?.email === "string"
-      ? { name: value.name, email: value.email }
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-export function signIn(user: User): void {
-  const clean = { name: user.name.trim(), email: user.email.trim() };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
+function update(next: Session) {
+  session = next;
+  version++;
   listeners.forEach((notify) => notify());
 }
 
-export function signOut(): void {
-  localStorage.removeItem(STORAGE_KEY);
-  listeners.forEach((notify) => notify());
+// Any 401 means the session has ended: go back to signed out.
+onUnauthorized(() => {
+  if (session.user) update({ user: null, expired: true });
+});
+
+async function authenticate(url: string, body: unknown, fallback: string): Promise<User> {
+  const user = await api<User>(url, { method: "POST", body, fallback });
+  update({ user, expired: false });
+  return user;
 }
 
-function readRaw(): string | null {
-  try {
-    return localStorage.getItem(STORAGE_KEY);
-  } catch {
-    return null; // Storage can be unavailable, e.g. when blocked by privacy settings.
-  }
+export function signUp(name: string, email: string, password: string): Promise<User> {
+  return authenticate("/api/auth/signup", { name, email, password }, "Couldn't create your account. Try again.");
+}
+
+export function signIn(email: string, password: string): Promise<User> {
+  return authenticate("/api/auth/signin", { email, password }, "Couldn't sign you in. Try again.");
+}
+
+/** Ends the session; throws (and stays signed in) if the server couldn't be reached. */
+export async function signOut(): Promise<void> {
+  await api("/api/auth/signout", { method: "POST" });
+  update({ user: null, expired: false });
+}
+
+/** Asks the backend who is signed in (once, until the next sign-in or sign-out). */
+function checkSession(): Promise<void> {
+  const started = version;
+  checking ??= api<User>("/api/auth/me")
+    .catch(() => null)
+    .then((user) => {
+      if (version === started) update({ user, expired: false });
+    });
+  return checking;
 }
 
 function subscribe(notify: () => void) {
   listeners.add(notify);
-  window.addEventListener("storage", notify); // Sign-in/out in other tabs.
-  return () => {
-    listeners.delete(notify);
-    window.removeEventListener("storage", notify);
-  };
+  if (session.user === undefined) void checkSession();
+  return () => listeners.delete(notify);
 }
 
-/**
- * The signed-in user, or null when signed out. `undefined` means "not known yet":
- * pages are prerendered without access to localStorage.
- */
+/** The signed-in user; `undefined` while checking (and during prerendering), `null` if signed out. */
 export function useUser(): User | null | undefined {
-  const raw = useSyncExternalStore<string | null | undefined>(subscribe, readRaw, () => undefined);
-  return useMemo(() => (raw === undefined ? undefined : parseUser(raw)), [raw]);
+  return useSyncExternalStore(subscribe, () => session.user, () => undefined);
+}
+
+/** Whether the user was just signed out because their session ended. */
+export function useSessionExpired(): boolean {
+  return useSyncExternalStore(subscribe, () => session.expired, () => false);
+}
+
+/** Test helper: forget the cached session. */
+export function resetSession(): void {
+  session = { user: undefined, expired: false };
+  checking = null;
 }

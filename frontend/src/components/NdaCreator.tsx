@@ -72,7 +72,7 @@ export default function NdaCreator({ template }: { template: NdaTemplate }) {
             type="button"
             onClick={download}
             disabled={missing.length > 0 || downloading}
-            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-300"
+            className="rounded-md bg-brand-purple px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             {downloading ? "Preparing PDF…" : "Download PDF"}
           </button>

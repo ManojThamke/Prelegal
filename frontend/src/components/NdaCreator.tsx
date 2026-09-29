@@ -2,15 +2,16 @@
 
 import { useEffect, useState } from "react";
 
-import NdaForm from "@/components/NdaForm";
+import NdaChat from "@/components/NdaChat";
 import NdaPreview from "@/components/NdaPreview";
-import { defaultNdaData, missingFields, pdfFileName, type NdaData, type NdaTemplate } from "@/lib/nda";
-
-function todayIso(): string {
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-}
+import {
+  defaultNdaData,
+  missingFields,
+  pdfFileName,
+  todayIso,
+  type NdaData,
+  type NdaTemplate,
+} from "@/lib/nda";
 
 export default function NdaCreator({ template }: { template: NdaTemplate }) {
   const [data, setData] = useState<NdaData>(defaultNdaData);
@@ -53,8 +54,8 @@ export default function NdaCreator({ template }: { template: NdaTemplate }) {
 
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
-      <div className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
-        <NdaForm data={data} onChange={setData} />
+      <div className="h-[32rem] overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 lg:sticky lg:top-6 lg:h-[calc(100vh-3rem)]">
+        <NdaChat data={data} onChange={setData} />
       </div>
 
       <div className="space-y-4">

@@ -106,6 +106,13 @@ export type CoverSection = {
 const yearsLabel = (years: string) =>
   `${years} year${Number(years) === 1 ? "" : "s"}`;
 
+/** The user's local date as ISO yyyy-mm-dd. */
+export function todayIso(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
 export function formatDate(iso: string): string {
   if (!iso) return "";
   const date = new Date(`${iso}T00:00:00Z`);

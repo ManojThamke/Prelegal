@@ -35,8 +35,8 @@ export default function NdaPage() {
         <header className="mb-8">
           <h1 className="text-3xl font-bold text-brand-navy">Mutual NDA Creator</h1>
           <p className="mt-2 max-w-2xl text-slate-600">
-            Fill in the key terms and party details. The agreement updates as you type, and you can
-            download the completed document as a PDF.
+            Chat with our AI assistant about your agreement. It fills in the document as you go, and
+            you can download the completed agreement as a PDF.
           </p>
         </header>
         {error ? (

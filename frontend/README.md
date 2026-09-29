@@ -9,8 +9,7 @@ FastAPI backend, which also provides the `/api` endpoints it calls.
   name and valid-looking email lets the user in; there is no authentication yet. The user
   is kept in localStorage (`src/lib/session.ts`).
 - `/nda/` — the Mutual NDA creator ([PL-4](https://iamitbhoirr.atlassian.net/browse/PL-4)).
-  Fill in the key terms and party details, see the agreement update live, and download
-  it as a PDF. Signed-out users are sent back to `/`.
+  Chat with the AI assistant, see the agreement fill in live, and download it as a PDF. Signed-out users are sent back to `/`.
 
 ## Development
 
@@ -34,7 +33,10 @@ Other scripts: `npm run build` (static export to `out/`), `npm test` (Vitest),
   `/api/templates/{id}` (`mutual-nda-coverpage` and `mutual-nda`) in `src/lib/templates.ts`.
 - `src/lib/nda.ts` holds the form data model, the template parser, the derived cover
   page content and validation. It is shared by the HTML preview and the PDF.
-- `src/components/NdaForm.tsx` is the form, `NdaPreview.tsx` the live HTML preview, and
+- `src/components/NdaChat.tsx` is a freeform chat with the AI assistant
+  ([PL-6](https://iamitbhoirr.atlassian.net/browse/PL-6)). Each turn posts the conversation and
+  current field values to `/api/chat` (`src/lib/chat.ts`) and applies the fields it returns.
+- `NdaPreview.tsx` is the live HTML preview, and
   `NdaPdf.tsx` the PDF version built with `@react-pdf/renderer`. The PDF library is
   loaded only when the user clicks **Download PDF**.
 - The Standard Terms are reproduced verbatim; defined terms such as *Purpose* refer to the

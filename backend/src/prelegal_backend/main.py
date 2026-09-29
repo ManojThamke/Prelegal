@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 
-from . import templates
+from . import chat, templates
 from .config import Settings
 from .db import init_db
 
@@ -27,6 +27,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(templates.router)
+    app.include_router(chat.router)
 
     # Unknown API paths get a JSON 404 rather than falling through to the frontend.
     @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])

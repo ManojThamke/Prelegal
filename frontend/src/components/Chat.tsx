@@ -3,15 +3,15 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 import { GREETING, sendChat, type ChatMessage } from "@/lib/chat";
-import type { NdaData } from "@/lib/nda";
+import type { Draft } from "@/lib/documents";
 
 type Props = {
-  data: NdaData;
-  onChange: (data: NdaData) => void;
+  draft: Draft;
+  onChange: (draft: Draft) => void;
 };
 
-/** Freeform chat with the AI assistant, which fills in the NDA fields as it goes. */
-export default function NdaChat({ data, onChange }: Props) {
+/** Freeform chat with the AI assistant, which picks the document and fills it in as it goes. */
+export default function Chat({ draft, onChange }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([GREETING]);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
@@ -29,9 +29,9 @@ export default function NdaChat({ data, onChange }: Props) {
     setPending(true);
     setError(null);
     try {
-      const { reply, fields } = await sendChat(conversation, data);
-      setMessages([...conversation, { role: "assistant", content: reply }]);
-      onChange(fields);
+      const result = await sendChat(conversation, draft);
+      setMessages([...conversation, { role: "assistant", content: result.reply }]);
+      onChange(result.draft);
     } catch (e) {
       console.error(e);
       setError(e instanceof Error ? e.message : "Something went wrong. Please try again.");

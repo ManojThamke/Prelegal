@@ -1,20 +1,37 @@
-import NdaCreator from "@/components/NdaCreator";
-import { loadMutualNdaTemplate } from "@/lib/templates";
+"use client";
 
-export default async function Home() {
-  const template = await loadMutualNdaTemplate();
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+
+import Brand from "@/components/Brand";
+import SignInForm from "@/components/SignInForm";
+import { useUser } from "@/lib/session";
+
+const HOME = "/nda/";
+
+export default function SignInPage() {
+  const router = useRouter();
+  const user = useUser();
+
+  // Signed in (already, or by submitting the form): go into the app.
+  useEffect(() => {
+    if (user) router.replace(HOME);
+  }, [user, router]);
 
   return (
-    <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
-      <header className="mb-8">
-        <p className="text-sm font-semibold uppercase tracking-wide text-indigo-600">Prelegal</p>
-        <h1 className="mt-1 text-3xl font-bold text-slate-900">Mutual NDA Creator</h1>
-        <p className="mt-2 max-w-2xl text-slate-600">
-          Fill in the key terms and party details. The agreement updates as you type, and you can
-          download the completed document as a PDF.
+    <main className="flex flex-1 items-center justify-center px-4 py-12">
+      <div className="w-full max-w-sm">
+        <p className="text-center">
+          <Brand className="text-3xl" />
         </p>
-      </header>
-      <NdaCreator template={template} />
+        <p className="mt-2 text-center text-sm text-brand-gray">
+          Draft legal agreements from trusted templates.
+        </p>
+        <div className="mt-8 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+          <h1 className="mb-5 text-xl font-semibold text-brand-navy">Sign in</h1>
+          <SignInForm />
+        </div>
+      </div>
     </main>
   );
 }

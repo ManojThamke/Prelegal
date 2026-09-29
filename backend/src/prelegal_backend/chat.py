@@ -154,8 +154,10 @@ suggest having a lawyer review the document.
 
 NO_DOCUMENT = """\
 No document has been chosen yet. Find out what the user needs: ask what kind of agreement \
-they want, or what they are trying to do, and recommend the best fit from the list. Leave \
-`fieldUpdates` empty and set party1 and party2 to null until a document is chosen."""
+they want, or what they are trying to do, and recommend the best fit from the list. End every \
+reply with a question the user can answer, e.g. "Would you like to draft a Cloud Service \
+Agreement?" or "What will the agreement be used for?". Leave `fieldUpdates` empty and set \
+party1 and party2 to null until a document is chosen."""
 
 DOCUMENT = """\
 Current document: {name} (documentId "{id}").
@@ -170,10 +172,32 @@ Key terms (`fieldUpdates` keys):
 Guide the user through the missing values one topic at a time (at most two short questions), \
 in the order listed, then the parties. Mention optional terms briefly and move on if the user \
 doesn't need them. Once every required key term and each party's name, company, and \
-noticeAddress are set, briefly summarize and tell the user they can download the PDF.
+noticeAddress are set, briefly summarize and tell the user they can download the PDF, and ask \
+whether they'd like to change anything.
+
+End every reply with a clear question asking for the next missing value(s), so the user knows \
+exactly what to type: name the term in plain words, say briefly what it means if that isn't \
+obvious, and give its example as an illustration, e.g. "How long should each subscription \
+last? (for example, 1 year)". For a party, ask for the specific details still missing, e.g. \
+"What is the Customer's company name and email for legal notices?"
 
 Current values (empty strings are missing):
 {values}"""
+
+
+def next_question(spec: DocumentSpec, draft: Draft) -> str:
+    """A question asking for the draft's next missing value (used when the model can't be)."""
+    for field in spec.fields:
+        if field.required and not draft.fields.get(field.key, "").strip():
+            example = f' (for example, "{field.example}")' if field.example else ""
+            return f"What should the {field.label} be? {field.description.rstrip('.')}{example}."
+    for role, party in zip(spec.roles, (draft.party1, draft.party2)):
+        if not (party.name and party.company and party.notice_address):
+            return (
+                f"Who is signing for the {role}? Please give their name, title, company, and an "
+                "email or postal address for legal notices."
+            )
+    return f"Your {spec.name} is ready to download. Would you like to change anything?"
 
 
 def build_system_prompt(draft: Draft, today: date) -> str:
@@ -319,6 +343,10 @@ def _introduce_document(
         follow_up = _ask(model, build_messages(request, draft))
     except Exception:
         logger.warning("Follow-up for the newly chosen document failed", exc_info=True)
+        # Still end with a question, so the user knows what to answer next.
+        if not turn.reply.rstrip().endswith("?"):
+            reply = f"{turn.reply.rstrip()} {next_question(REGISTRY[draft.document_id], draft)}"
+            turn = turn.model_copy(update={"reply": reply})
         return turn, draft
     # The document was chosen by the first turn; the follow-up only fills it in.
     follow_up = follow_up.model_copy(update={"document_id": draft.document_id})

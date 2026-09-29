@@ -1,35 +1,37 @@
-"""AI chat that drafts a Mutual NDA: POST /api/chat.
+"""AI chat that drafts any supported document: POST /api/chat.
 
 The backend is stateless: each request carries the whole conversation and the current
-field values. One structured-output LLM call returns the assistant's reply plus any
-field values it extracted, which are merged into the fields returned to the client.
+draft (the chosen document, its key-term values, and both parties). One structured-output
+LLM call returns the assistant's reply plus the document it chose and any values it
+extracted, which are merged into the draft returned to the client.
 """
 
 import json
 import logging
 import os
-from collections.abc import Callable, Collection
+from collections.abc import Callable
 from datetime import date
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
-from pydantic.alias_generators import to_camel
+from pydantic import BaseModel, Field
+
+from .documents import DOCUMENTS, REGISTRY, CamelModel, DocumentSpec
 
 logger = logging.getLogger(__name__)
 
-# Google Gemini via LiteLLM, using GEMINI_API_KEY from Google AI Studio.
-MODEL = "gemini/gemini-2.5-flash"
+# Google Gemini via LiteLLM, using GEMINI_API_KEY from Google AI Studio. Free-tier quotas
+# are per model (gemini-2.5-flash allows only 20 requests a day), so when a model is
+# rate-limited or unavailable the next one is tried.
+MODELS = ("gemini/gemini-2.5-flash", "gemini/gemini-3.5-flash-lite")
 
 
-class CamelModel(BaseModel):
-    """Uses the frontend's camelCase JSON keys (see frontend/src/lib/nda.ts)."""
-
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+class QuotaExceeded(Exception):
+    """Every model is rate-limited (e.g. the free tier's daily quota is used up)."""
 
 
 # ---------------------------------------------------------------------------
-# Field values, as held by the frontend
+# The draft, as held by the frontend
 
 
 class Party(CamelModel):
@@ -39,16 +41,9 @@ class Party(CamelModel):
     notice_address: str = ""
 
 
-class NdaFields(CamelModel):
-    purpose: str = ""
-    effective_date: str = ""  # ISO yyyy-mm-dd
-    mnda_term_type: Literal["expires", "until-terminated"] = "expires"
-    mnda_term_years: str = ""
-    confidentiality_type: Literal["years", "perpetual"] = "years"
-    confidentiality_years: str = ""
-    governing_law: str = ""
-    jurisdiction: str = ""
-    modifications: str = ""
+class Draft(CamelModel):
+    document_id: str | None = None
+    fields: dict[str, str] = {}  # Key-term values, keyed by FieldSpec.key.
     party1: Party = Party()
     party2: Party = Party()
 
@@ -58,6 +53,11 @@ class NdaFields(CamelModel):
 # structured outputs require; null means "no change".
 
 
+class FieldUpdate(CamelModel):
+    key: str
+    value: str
+
+
 class PartyUpdates(CamelModel):
     name: str | None
     title: str | None
@@ -65,67 +65,56 @@ class PartyUpdates(CamelModel):
     notice_address: str | None
 
 
-class NdaUpdates(CamelModel):
-    purpose: str | None
-    effective_date: str | None
-    mnda_term_type: Literal["expires", "until-terminated"] | None
-    mnda_term_years: int | None
-    confidentiality_type: Literal["years", "perpetual"] | None
-    confidentiality_years: int | None
-    governing_law: str | None
-    jurisdiction: str | None
-    modifications: str | None
+class ChatTurn(CamelModel):
+    reply: str
+    document_id: str | None
+    field_updates: list[FieldUpdate]
     party1: PartyUpdates | None
     party2: PartyUpdates | None
 
 
-class ChatTurn(CamelModel):
-    reply: str
-    updates: NdaUpdates
+def apply_turn(draft: Draft, turn: ChatTurn) -> Draft:
+    """Returns `draft` with the turn's document choice and non-null values applied.
 
-
-YEAR_FIELDS = ("mnda_term_years", "confidentiality_years")
-
-
-def apply_updates(fields: NdaFields, updates: NdaUpdates) -> NdaFields:
-    """Returns `fields` with the non-null `updates` applied. Invalid values are ignored."""
-    data = fields.model_dump()
-    changes = updates.model_dump(exclude={"party1", "party2"}, exclude_none=True)
-    for key in YEAR_FIELDS:
-        years = changes.pop(key, None)
-        if years is not None and years >= 1:
-            data[key] = str(years)
-    if "effective_date" in changes:
-        changes["effective_date"] = _iso_date(changes["effective_date"])
-    data.update(_clean(changes, clearable={"modifications"}))
-    for key in ("party1", "party2"):
-        party_updates = getattr(updates, key)
-        if party_updates is not None:
-            data[key].update(_clean(party_updates.model_dump(exclude_none=True)))
-    return NdaFields.model_validate(data)
-
-
-def _clean(changes: dict, clearable: Collection[str] = ()) -> dict:
-    """Strips strings and drops empty values, except for fields that may be cleared.
-
-    The model should send null for "no change", but an empty string must never wipe a
-    value the user has already given.
+    Choosing a different document keeps the parties and the key terms both documents
+    share (e.g. Governing Law); the rest start empty. Unknown documents, unknown keys, and
+    invalid values are ignored.
     """
-    cleaned = {}
-    for key, value in changes.items():
-        if isinstance(value, str):
-            value = value.strip()
-        if value or (value == "" and key in clearable):
-            cleaned[key] = value
-    return cleaned
+    data = draft.model_dump()
+    if turn.document_id in REGISTRY and turn.document_id != draft.document_id:
+        data["document_id"] = turn.document_id
+        new_keys = {f.key for f in REGISTRY[turn.document_id].fields}
+        data["fields"] = {k: v for k, v in data["fields"].items() if k in new_keys}
+    spec = REGISTRY.get(data["document_id"])
+    if spec is None:
+        return Draft.model_validate(data)  # Nothing to fill in until a document is chosen.
+
+    for update in turn.field_updates:
+        field = spec.field(update.key)
+        if field is None:
+            continue
+        value = update.value.strip()
+        if field.kind == "date" and value:
+            value = _iso_date(value)
+            if value is None:
+                continue
+        if value or not field.required:  # Only optional values may be cleared.
+            data["fields"][field.key] = value
+    for key in ("party1", "party2"):
+        party_updates = getattr(turn, key)
+        if party_updates is not None:
+            changes = party_updates.model_dump(exclude_none=True)
+            # An empty string must never wipe a value the user has already given.
+            data[key].update({k: v.strip() for k, v in changes.items() if v.strip()})
+    return Draft.model_validate(data)
 
 
 def _iso_date(text: str) -> str | None:
     """Normalizes a date to YYYY-MM-DD, or returns None if it isn't one."""
     try:
-        return date.fromisoformat(text.strip()).isoformat()
+        return date.fromisoformat(text).isoformat()
     except ValueError:
-        logger.warning("Ignoring invalid effective date from the model: %r", text)
+        logger.warning("Ignoring invalid date from the model: %r", text)
         return None
 
 
@@ -134,42 +123,86 @@ def _iso_date(text: str) -> str | None:
 
 SYSTEM_PROMPT = """\
 You are Prelegal's assistant. Through a friendly conversation, you help the user draft a \
-Common Paper Mutual Non-Disclosure Agreement (MNDA) by collecting the values for its \
-Cover Page. The Standard Terms are fixed and cannot be edited.
+legal agreement from Common Paper's standard templates. The Standard Terms of each \
+document are fixed; you collect the values for its Key Terms and the details of both parties.
 
-Fields (keys of `updates`):
-- purpose: how Confidential Information may be used, e.g. "Evaluating a potential partnership".
-- effectiveDate: when the MNDA takes effect, as YYYY-MM-DD.
-- mndaTermType: "expires" (the MNDA ends mndaTermYears after the Effective Date) or \
-"until-terminated" (continues until a party terminates it).
-- mndaTermYears: whole number of years; only needed when mndaTermType is "expires".
-- confidentialityType: "years" (information protected for confidentialityYears after the \
-Effective Date; trade secrets for as long as they remain trade secrets) or "perpetual".
-- confidentialityYears: whole number of years; only needed when confidentialityType is "years".
-- governingLaw: the US state whose laws govern the MNDA, e.g. "Delaware".
-- jurisdiction: city or county and state whose courts hear disputes, e.g. "New Castle, DE".
-- modifications: optional changes to the Standard Terms; leave empty unless the user asks.
-- party1, party2: each party's name (the person signing), title (optional), company, and \
-noticeAddress (email or postal address for legal notices).
+Documents you can draft (documentId: name - description):
+{catalog}
 
 Rules:
-- In `updates`, set only values the user has stated or clearly confirmed. Use null for \
-everything else, including for fields that are unchanged. Never invent names, companies, \
-addresses, places, or dates.
+- Set `documentId` to the id of the document the user wants as soon as it is clear which \
+one fits; ask a clarifying question first only if several documents could fit. Otherwise \
+set it to null.
+- If the user asks for a document that is not in the list, say plainly that you can't \
+generate it, then always name the closest document(s) from the list, explain in a sentence \
+how each could help (or why none fits well), and ask whether they'd like to draft one. Set \
+`documentId` only once they agree.
+- If the user seems to want a different document once values have been collected, confirm \
+first, and switch (set `documentId` to it) only when they clearly want to. Party details and \
+the key terms both documents share carry over; the rest start empty.
+- Set values only when the user has stated or clearly confirmed them. Leave everything else \
+out of `fieldUpdates` and use null for unchanged parties or party details. Never invent \
+names, companies, addresses, amounts, places, or dates.
 - If the user corrects a value, set the corrected value.
 - Convert relative dates such as "today" or "next Monday" to YYYY-MM-DD. Today is {today}.
-- Ask about one topic at a time (at most two short questions), working through missing \
-values in the order listed above. Empty strings in the current values below are missing. \
-Values that are already set may be defaults: mention them so the user can change them, \
-but don't ask about each one.
 - Keep replies short, friendly, and in plain text without markdown. You may briefly explain \
-what a field means, but do not give legal advice.
-- Once purpose, effectiveDate, the terms, governingLaw, jurisdiction, and each party's \
-name, company, and noticeAddress are all set, briefly summarize and tell the user they can \
-download the PDF.
+what a term means and mention its example as an illustration, but the choice is the user's: \
+do not recommend values or give legal advice, and if they ask whether terms suit them, \
+suggest having a lawyer review the document.
 
-Current values:
-{fields}"""
+{document}"""
+
+NO_DOCUMENT = """\
+No document has been chosen yet. Find out what the user needs: ask what kind of agreement \
+they want, or what they are trying to do, and recommend the best fit from the list. Leave \
+`fieldUpdates` empty and set party1 and party2 to null until a document is chosen."""
+
+DOCUMENT = """\
+Current document: {name} (documentId "{id}").
+
+Parties: party1 is the {role1} and party2 is the {role2}. For each, collect name (the person \
+signing), title (optional), company, and noticeAddress (email or postal address for legal \
+notices).
+
+Key terms (`fieldUpdates` keys):
+{fields}
+
+Guide the user through the missing values one topic at a time (at most two short questions), \
+in the order listed, then the parties. Mention optional terms briefly and move on if the user \
+doesn't need them. Once every required key term and each party's name, company, and \
+noticeAddress are set, briefly summarize and tell the user they can download the PDF.
+
+Current values (empty strings are missing):
+{values}"""
+
+
+def build_system_prompt(draft: Draft, today: date) -> str:
+    catalog = "\n".join(f"- {d.id}: {d.name} - {d.description}" for d in DOCUMENTS)
+    spec = REGISTRY.get(draft.document_id or "")
+    document = NO_DOCUMENT if spec is None else _document_prompt(spec, draft)
+    return SYSTEM_PROMPT.format(catalog=catalog, today=today.isoformat(), document=document)
+
+
+def _document_prompt(spec: DocumentSpec, draft: Draft) -> str:
+    fields = "\n".join(
+        f"- {f.key} ({f.label}; {'required' if f.required else 'optional'}"
+        f"{'; YYYY-MM-DD' if f.kind == 'date' else ''}): {f.description}"
+        + (f' For example: "{f.example}".' if f.example else "")
+        for f in spec.fields
+    )
+    values = {
+        "fields": {f.key: draft.fields.get(f.key, "") for f in spec.fields},
+        "party1": draft.party1.model_dump(by_alias=True),
+        "party2": draft.party2.model_dump(by_alias=True),
+    }
+    return DOCUMENT.format(
+        name=spec.name,
+        id=spec.id,
+        role1=spec.roles[0],
+        role2=spec.roles[1],
+        fields=fields,
+        values=json.dumps(values, indent=2),
+    )
 
 
 class ChatMessage(BaseModel):
@@ -179,24 +212,23 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage] = Field(min_length=1, max_length=1000)
-    fields: NdaFields
+    draft: Draft
     today: date | None = None  # The user's local date; defaults to the server's.
 
 
 class ChatResponse(BaseModel):
     reply: str
-    fields: NdaFields
+    draft: Draft
 
 
-# Only the most recent messages are sent to the model; the current field values in the
-# system prompt carry everything collected earlier.
+# Only the most recent messages are sent to the model; the current values in the system
+# prompt carry everything collected earlier.
 MAX_HISTORY = 40
 
 
-def build_messages(request: ChatRequest) -> list[dict[str, str]]:
-    today = request.today or date.today()
-    fields = json.dumps(request.fields.model_dump(by_alias=True), indent=2)
-    system = SYSTEM_PROMPT.format(today=today.isoformat(), fields=fields)
+def build_messages(request: ChatRequest, draft: Draft | None = None) -> list[dict[str, str]]:
+    """The model's input: the system prompt for `draft` (default: the request's) and history."""
+    system = build_system_prompt(draft or request.draft, request.today or date.today())
     history = [m.model_dump() for m in request.messages[-MAX_HISTORY:]]
     return [{"role": "system", "content": system}] + history
 
@@ -208,11 +240,26 @@ ChatModel = Callable[[list[dict[str, str]]], ChatTurn]
 
 
 def gemini_chat_model(messages: list[dict[str, str]]) -> ChatTurn:
-    """Gemini Flash with Structured Outputs."""
-    from litellm import completion  # Imported lazily: litellm is slow to import.
+    """Gemini with Structured Outputs, falling back through MODELS on failure."""
+    from litellm.exceptions import RateLimitError  # Imported lazily: litellm is slow to import.
+
+    errors: list[Exception] = []
+    for model in MODELS:
+        try:
+            return _complete(model, messages)
+        except Exception as e:
+            logger.warning("%s failed (%s)", model, type(e).__name__)
+            errors.append(e)
+    if all(isinstance(e, RateLimitError) for e in errors):
+        raise QuotaExceeded from errors[-1]
+    raise errors[-1]
+
+
+def _complete(model: str, messages: list[dict[str, str]]) -> ChatTurn:
+    from litellm import completion
 
     response = completion(
-        model=MODEL,
+        model=model,
         messages=messages,
         response_format=ChatTurn,
         reasoning_effort="low",
@@ -231,19 +278,48 @@ def get_chat_model() -> ChatModel:
     return gemini_chat_model
 
 
+def _ask(model: ChatModel, messages: list[dict[str, str]]) -> ChatTurn:
+    turn = model(messages)
+    if not turn.reply.strip():
+        raise ValueError("The model returned an empty reply")
+    return turn
+
+
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 
 @router.post("")
 def chat(request: ChatRequest, model: ChatModel = Depends(get_chat_model)) -> ChatResponse:
     try:
-        turn = model(build_messages(request))
-        if not turn.reply.strip():
-            raise ValueError("The model returned an empty reply")
+        turn = _ask(model, build_messages(request))
+    except QuotaExceeded:
+        logger.warning("AI chat request failed: every model is rate-limited")
+        raise HTTPException(
+            status_code=429,
+            detail="The AI assistant has reached its usage limit for now. Please try again later.",
+        )
     except Exception:
         logger.exception("AI chat request failed")
         raise HTTPException(
             status_code=502,
             detail="The AI assistant is unavailable right now. Please try again.",
         )
-    return ChatResponse(reply=turn.reply, fields=apply_updates(request.fields, turn.updates))
+    draft = apply_turn(request.draft, turn)
+    if draft.document_id != request.draft.document_id:
+        turn, draft = _introduce_document(model, request, turn, draft)
+    return ChatResponse(reply=turn.reply, draft=draft)
+
+
+def _introduce_document(
+    model: ChatModel, request: ChatRequest, turn: ChatTurn, draft: Draft
+) -> tuple[ChatTurn, Draft]:
+    """The document was just chosen, but the model hasn't seen its key terms: asks again
+    with them so the reply can start guiding the user. Keeps the first turn on failure."""
+    try:
+        follow_up = _ask(model, build_messages(request, draft))
+    except Exception:
+        logger.warning("Follow-up for the newly chosen document failed", exc_info=True)
+        return turn, draft
+    # The document was chosen by the first turn; the follow-up only fills it in.
+    follow_up = follow_up.model_copy(update={"document_id": draft.document_id})
+    return follow_up, apply_turn(draft, follow_up)

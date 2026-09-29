@@ -7,7 +7,7 @@ import Brand from "@/components/Brand";
 import SignInForm from "@/components/SignInForm";
 import { useUser } from "@/lib/session";
 
-const HOME = "/nda/";
+const HOME = "/draft/";
 
 export default function SignInPage() {
   const router = useRouter();

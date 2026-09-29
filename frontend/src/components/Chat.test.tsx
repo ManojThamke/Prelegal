@@ -3,29 +3,29 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GREETING } from "@/lib/chat";
-import { defaultNdaData, type NdaData } from "@/lib/nda";
-import { requestBody, stubFetch } from "@/test/fetch";
+import { emptyDraft, type Draft } from "@/lib/documents";
+import { requestBody, stubFetch } from "@/test/backend";
 
-import NdaChat from "./NdaChat";
+import Chat from "./Chat";
 
-const updated: NdaData = { ...defaultNdaData, purpose: "Exploring a joint venture" };
+const updated: Draft = { ...emptyDraft, documentId: "mutual-nda", fields: { purpose: "A joint venture" } };
 
-const reply = (text: string, fields = updated) => Response.json({ reply: text, fields });
+const reply = (text: string, draft = updated) => Response.json({ reply: text, draft });
 
 beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
-describe("NdaChat", () => {
+describe("Chat", () => {
   it("opens with the greeting", () => {
-    render(<NdaChat data={defaultNdaData} onChange={() => {}} />);
+    render(<Chat draft={emptyDraft} onChange={() => {}} />);
     expect(screen.getByText(GREETING.content)).toBeInTheDocument();
   });
 
-  it("sends the conversation and fields, shows the reply and applies the fields", async () => {
+  it("sends the conversation and draft, shows the reply and applies the new draft", async () => {
     const fetchMock = stubFetch(reply("Great. When should it take effect?"));
     const onChange = vi.fn();
-    render(<NdaChat data={defaultNdaData} onChange={onChange} />);
+    render(<Chat draft={emptyDraft} onChange={onChange} />);
 
     await userEvent.type(screen.getByLabelText("Message"), "A joint venture");
     await userEvent.click(screen.getByRole("button", { name: "Send" }));
@@ -36,13 +36,13 @@ describe("NdaChat", () => {
 
     expect(requestBody(fetchMock)).toMatchObject({
       messages: [GREETING, { role: "user", content: "A joint venture" }],
-      fields: defaultNdaData,
+      draft: emptyDraft,
     });
   });
 
   it("sends on Enter, adds a new line on Shift+Enter", async () => {
     const fetchMock = stubFetch(reply("Thanks!"));
-    render(<NdaChat data={defaultNdaData} onChange={() => {}} />);
+    render(<Chat draft={emptyDraft} onChange={() => {}} />);
     const input = screen.getByLabelText("Message");
 
     await userEvent.type(input, "Line one{Shift>}{Enter}{/Shift}line two");
@@ -57,7 +57,7 @@ describe("NdaChat", () => {
   it("shows a thinking indicator and blocks sending while waiting", async () => {
     let respond!: (response: Response) => void;
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => (respond = resolve))));
-    render(<NdaChat data={defaultNdaData} onChange={() => {}} />);
+    render(<Chat draft={emptyDraft} onChange={() => {}} />);
 
     await userEvent.type(screen.getByLabelText("Message"), "Hello");
     await userEvent.click(screen.getByRole("button", { name: "Send" }));
@@ -76,7 +76,7 @@ describe("NdaChat", () => {
       reply("Back again!"),
     );
     const onChange = vi.fn();
-    render(<NdaChat data={defaultNdaData} onChange={onChange} />);
+    render(<Chat draft={emptyDraft} onChange={onChange} />);
 
     await userEvent.type(screen.getByLabelText("Message"), "Hello");
     await userEvent.click(screen.getByRole("button", { name: "Send" }));

@@ -9,12 +9,16 @@ FastAPI app (a [uv](https://docs.astral.sh/uv/) project) that serves the JSON AP
 - `GET /api/templates` — the template catalog (`../catalog.json`) as `{id, name, description}`.
 - `GET /api/templates/{id}` — one template, including its markdown `content`.
   Ids are the lower-cased file names, e.g. `mutual-nda`, `csa`, `ai-addendum`.
-- `POST /api/chat` — one turn of the AI chat that drafts a Mutual NDA. Takes
-  `{messages, fields}` (the whole conversation and the current field values) and returns
-  `{reply, fields}` with the values the AI extracted merged in. Uses Google Gemini
-  (`gemini-2.5-flash`) via LiteLLM with Structured Outputs (`src/prelegal_backend/chat.py`).
-  Needs `GEMINI_API_KEY` from Google AI Studio (read from the repo's `.env`); returns 503 without it and 502
-  if the model call fails.
+- `GET /api/documents` — the documents Prelegal can draft, each with its two party roles
+  and the key terms the AI collects (`src/prelegal_backend/documents.py`).
+- `POST /api/chat` — one turn of the AI chat that picks a document and drafts it. Takes
+  `{messages, draft, today}` (the whole conversation, the current draft
+  `{documentId, fields, party1, party2}`, and the user's local date) and returns
+  `{reply, draft}` with the AI's choice and extracted values merged in. Uses Google Gemini
+  via LiteLLM with Structured Outputs (`src/prelegal_backend/chat.py`): `gemini-2.5-flash`,
+  falling back to `gemini-3.5-flash-lite` when rate-limited. Needs `GEMINI_API_KEY` from
+  Google AI Studio (read from the repo's `.env`); returns 503 without it, 429 when every
+  model's quota is used up, and 502 if the model call fails.
 
 ## Database
 
